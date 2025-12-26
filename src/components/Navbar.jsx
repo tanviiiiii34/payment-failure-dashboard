@@ -1,7 +1,7 @@
 export default function Navbar({ user, role, onLogout }) {
   return (
     <div style={navbar}>
-      <h3 style={{ margin: 0 }}>Payment Failure Dashboard</h3>
+      <h3 style={{ margin: 0 }}>Payment Failure Insights</h3>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span>{user}</span>

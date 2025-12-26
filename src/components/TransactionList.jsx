@@ -12,10 +12,16 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+/* ================= RESPONSIVE ================= */
+
+const isMobile = window.innerWidth < 768;
+
 /* ================= HELPERS ================= */
 
 const formatReason = (r) =>
-  r ? r.replace("_", " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : "N/A";
+  r
+    ? r.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+    : "N/A";
 
 const getSeverity = (r) => (r >= 3 ? "High" : r === 2 ? "Medium" : "Low");
 
@@ -34,25 +40,21 @@ export default function TransactionList() {
 
   const theme = darkMode ? dark : light;
 
-  /* ---------------- FILTER ---------------- */
+  /* ================= FILTER ================= */
 
   const filtered = transactions.filter((t) => {
-    const matchSearch = t.id.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === "ALL" || t.failureReason === filter;
-    return matchSearch && matchFilter;
+    const s = t.id.toLowerCase().includes(search.toLowerCase());
+    const f = filter === "ALL" || t.failureReason === filter;
+    return s && f;
   });
 
-  /* ---------------- STATS ---------------- */
+  const failed = filtered.filter((t) => t.status === "FAILED");
+  const totalRetries = failed.reduce((s, t) => s + t.retryCount, 0);
 
-  const total = filtered.length;
-  const failed = filtered.filter(t => t.status === "FAILED");
-  const retries = failed.reduce((s, t) => s + t.retryCount, 0);
-  const avg = failed.length ? (retries / failed.length).toFixed(2) : "0.00";
-
-  /* ---------------- CHART DATA ---------------- */
+  /* ================= CHART DATA ================= */
 
   const failureCounts = {};
-  failed.forEach(t => {
+  failed.forEach((t) => {
     failureCounts[t.failureReason] =
       (failureCounts[t.failureReason] || 0) + 1;
   });
@@ -64,33 +66,30 @@ export default function TransactionList() {
 
   const pieData = [
     { name: "Failures", value: failed.length },
-    { name: "Retries", value: retries },
+    { name: "Retries", value: totalRetries },
   ];
 
-  /* ---------------- CSV EXPORT ---------------- */
+  /* ================= CSV ================= */
 
   const exportCSV = () => {
-    const header = ["ID", "Status", "Failure Reason", "Retries", "Severity"];
-
-    const rows = filtered.map(t => [
-      t.id,
-      t.status,
-      formatReason(t.failureReason),
-      t.retryCount,
-      getSeverity(t.retryCount),
-    ]);
-
-    const csv = [header, ...rows].map(r => r.join(",")).join("\n");
+    const csv = [
+      ["ID", "Status", "Failure Reason", "Retries", "Severity"],
+      ...filtered.map((t) => [
+        t.id,
+        t.status,
+        formatReason(t.failureReason),
+        t.retryCount,
+        getSeverity(t.retryCount),
+      ]),
+    ]
+      .map((r) => r.join(","))
+      .join("\n");
 
     const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
-    a.href = url;
-    a.download = "payment_failure_report.csv";
+    a.href = URL.createObjectURL(blob);
+    a.download = "payment_failures.csv";
     a.click();
-
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -109,7 +108,7 @@ export default function TransactionList() {
           onChange={(e) => setFilter(e.target.value)}
           style={theme.input}
         >
-          <option value="ALL">All Failure Reasons</option>
+          <option value="ALL">All Failures</option>
           <option value="NETWORK_ERROR">Network Error</option>
           <option value="INVALID_CARD">Invalid Card</option>
           <option value="TIMEOUT">Timeout</option>
@@ -125,70 +124,79 @@ export default function TransactionList() {
       </div>
 
       {/* ================= STATS ================= */}
-      <div style={statsGrid}>
-        <Stat title="Total Transactions" value={total} theme={theme} />
-        <Stat title="Failed Transactions" value={failed.length} theme={theme} />
-        <Stat title="Total Retries" value={retries} theme={theme} />
-        <Stat title="Avg Retries / Failure" value={avg} theme={theme} />
+      <div style={grid4}>
+        <Stat title="Total Transactions" value={filtered.length} />
+        <Stat title="Failed Transactions" value={failed.length} />
+        <Stat title="Total Retries" value={totalRetries} />
+        <Stat
+          title="Avg Retries / Failure"
+          value={failed.length ? (totalRetries / failed.length).toFixed(2) : "0.00"}
+        />
       </div>
 
       {/* ================= CHARTS ================= */}
-      <div style={chartsGrid}>
-        <div style={theme.card}>
-          <h3>Failure Distribution</h3>
+      <div style={grid2}>
+        <Card title="Failure Distribution" dark={darkMode}>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={barData}>
-              <XAxis dataKey="reason" stroke={theme.chartText} />
-              <YAxis allowDecimals={false} stroke={theme.chartText} />
+              <XAxis dataKey="reason" />
+              <YAxis allowDecimals={false} />
               <Tooltip />
               <Bar dataKey="count" fill="#6366f1" />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
 
-        <div style={theme.card}>
-          <h3>Failures vs Retries</h3>
+        <Card title="Failures vs Retries" dark={darkMode}>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
-              <Pie data={pieData} dataKey="value" innerRadius={55} outerRadius={90} label>
+              <Pie
+                data={pieData}
+                dataKey="value"
+                innerRadius={55}
+                outerRadius={90}
+                label
+              >
                 <Cell fill="#f97316" />
                 <Cell fill="#6366f1" />
               </Pie>
               <Tooltip />
             </PieChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
       </div>
 
       {/* ================= TABLE ================= */}
-      <div style={theme.card}>
-        <h3>Transactions</h3>
-
-        <div style={{ overflowX: "auto" }}>
+      <Card title="Transactions" dark={darkMode}>
+        <div
+          style={{
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
           <table style={theme.table}>
             <thead>
               <tr>
-                <th style={theme.th}>ID</th>
-                <th style={theme.th}>Status</th>
-                <th style={theme.th}>Failure Reason</th>
-                <th style={theme.th}>Retries</th>
-                <th style={theme.th}>Severity</th>
+                <th style={th}>ID</th>
+                <th style={th}>Status</th>
+                <th style={th}>Failure Reason</th>
+                <th style={th}>Retries</th>
+                <th style={th}>Severity</th>
               </tr>
             </thead>
-
             <tbody>
-              {filtered.map(t => {
+              {filtered.map((t) => {
                 const sev = getSeverity(t.retryCount);
                 return (
                   <tr key={t.id}>
-                    <td style={theme.td}>{t.id}</td>
-                    <td style={theme.td}>{t.status}</td>
-                    <td style={theme.td}>{formatReason(t.failureReason)}</td>
-                    <td style={theme.td}>{t.retryCount}</td>
-                    <td style={theme.td}>
+                    <td style={td}>{t.id}</td>
+                    <td style={td}>{t.status}</td>
+                    <td style={td}>{formatReason(t.failureReason)}</td>
+                    <td style={td}>{t.retryCount}</td>
+                    <td style={td}>
                       <span
                         style={{
-                          padding: "6px 14px",
+                          padding: "6px 12px",
                           borderRadius: 999,
                           fontSize: 12,
                           fontWeight: 600,
@@ -205,17 +213,30 @@ export default function TransactionList() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
 
-/* ================= SMALL COMPONENT ================= */
+/* ================= SMALL COMPONENTS ================= */
 
-const Stat = ({ title, value, theme }) => (
-  <div style={theme.card}>
-    <p style={{ opacity: 0.7 }}>{title}</p>
+const Stat = ({ title, value }) => (
+  <div style={card}>
+    <p style={{ opacity: 0.6 }}>{title}</p>
     <h2>{value}</h2>
+  </div>
+);
+
+const Card = ({ title, children, dark }) => (
+  <div
+    style={{
+      ...card,
+      background: dark ? "#1f2937" : "#ffffff",
+      color: dark ? "#e5e7eb" : "#111827",
+    }}
+  >
+    <h3 style={{ marginBottom: 16 }}>{title}</h3>
+    {children}
   </div>
 );
 
@@ -223,48 +244,64 @@ const Stat = ({ title, value, theme }) => (
 
 const controls = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+  marginBottom: 24,
+};
+
+const grid4 = {
+  display: "grid",
+  gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 16,
-  marginBottom: 28,
+  marginBottom: 24,
 };
 
-const statsGrid = {
+const grid2 = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
   gap: 20,
-  marginBottom: 32,
+  marginBottom: 24,
 };
 
-const chartsGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
-  gap: 24,
-  marginBottom: 32,
+const card = {
+  padding: 24,
+  borderRadius: 16,
+  boxShadow: "0 8px 20px rgba(0,0,0,0.06)",
+};
+
+/* ================= TABLE ================= */
+
+const th = {
+  textAlign: "left",
+  padding: "12px 16px",
+  borderBottom: "1px solid #e5e7eb",
+  fontWeight: 600,
+};
+
+const td = {
+  padding: "12px 16px",
+  borderBottom: "1px solid #f1f5f9",
 };
 
 /* ================= THEMES ================= */
 
 const light = {
   page: {
-    maxWidth: 1200,
+    maxWidth: "1200px",
     margin: "0 auto",
-    padding: 24,
+    padding: isMobile ? 16 : 24,
     background: "#f4f6f8",
     color: "#111827",
   },
-  card: {
-    background: "#ffffff",
-    padding: 24,
-    borderRadius: 16,
-    boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
-  },
   input: {
-    padding: "10px 12px",
+    padding: 10,
+    width: "100%",
     borderRadius: 8,
     border: "1px solid #d1d5db",
   },
   button: {
     padding: "10px",
+    width: "100%",
     borderRadius: 8,
     border: "1px solid #d1d5db",
     background: "#ffffff",
@@ -273,17 +310,8 @@ const light = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
+    fontSize: 14,
   },
-  th: {
-    padding: "14px 12px",
-    textAlign: "left",
-    borderBottom: "2px solid #e5e7eb",
-  },
-  td: {
-    padding: "14px 12px",
-    borderBottom: "1px solid #e5e7eb",
-  },
-  chartText: "#111827",
 };
 
 const dark = {
@@ -292,10 +320,6 @@ const dark = {
     ...light.page,
     background: "#111827",
     color: "#e5e7eb",
-  },
-  card: {
-    ...light.card,
-    background: "#1f2937",
   },
   input: {
     ...light.input,
@@ -309,13 +333,4 @@ const dark = {
     color: "#e5e7eb",
     border: "1px solid #374151",
   },
-  th: {
-    ...light.th,
-    borderBottom: "2px solid #374151",
-  },
-  td: {
-    ...light.td,
-    borderBottom: "1px solid #374151",
-  },
-  chartText: "#e5e7eb",
 };
