@@ -1,5 +1,4 @@
-import { useState } from "react";
-import transactions from "../data/transactions";
+import { useState, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -13,11 +12,9 @@ import {
 } from "recharts";
 
 /* ================= RESPONSIVE ================= */
-
 const isMobile = window.innerWidth < 768;
 
 /* ================= HELPERS ================= */
-
 const formatReason = (r) =>
   r
     ? r.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
@@ -32,31 +29,62 @@ const severityStyle = {
 };
 
 /* ================= COMPONENT ================= */
+export default function TransactionList({ role, userEmail }) {
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-export default function TransactionList() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("ALL");
   const [darkMode, setDarkMode] = useState(false);
 
   const theme = darkMode ? dark : light;
 
-  /* ================= FILTER ================= */
+  /* ================= FETCH DATA ================= */
+ useEffect(() => {
+  const fetchTransactions = async () => {
+    try {
+      const res = await fetch(
+        `https://payment-failure-dashboard-2.onrender.com/api/transactions?role=${role}&userEmail=${userEmail}`
+      );
 
+      if (!res.ok) throw new Error("Failed to fetch");
+
+      const data = await res.json();
+      setTransactions(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchTransactions();
+}, [role, userEmail]);
+
+
+  /* ================= FILTER ================= */
   const filtered = transactions.filter((t) => {
-    const s = t.id.toLowerCase().includes(search.toLowerCase());
-    const f = filter === "ALL" || t.failureReason === filter;
-    return s && f;
+    const matchesSearch = t.transactionId
+      ?.toLowerCase()
+      .includes(search.toLowerCase());
+
+    const matchesFilter =
+      filter === "ALL" ||
+      (t.failureReason && t.failureReason === filter);
+
+    return matchesSearch && matchesFilter;
   });
 
   const failed = filtered.filter((t) => t.status === "FAILED");
   const totalRetries = failed.reduce((s, t) => s + t.retryCount, 0);
 
   /* ================= CHART DATA ================= */
-
   const failureCounts = {};
   failed.forEach((t) => {
-    failureCounts[t.failureReason] =
-      (failureCounts[t.failureReason] || 0) + 1;
+    if (t.failureReason) {
+      failureCounts[t.failureReason] =
+        (failureCounts[t.failureReason] || 0) + 1;
+    }
   });
 
   const barData = Object.entries(failureCounts).map(([k, v]) => ({
@@ -70,12 +98,11 @@ export default function TransactionList() {
   ];
 
   /* ================= CSV ================= */
-
   const exportCSV = () => {
     const csv = [
       ["ID", "Status", "Failure Reason", "Retries", "Severity"],
       ...filtered.map((t) => [
-        t.id,
+        t.transactionId,
         t.status,
         formatReason(t.failureReason),
         t.retryCount,
@@ -130,7 +157,11 @@ export default function TransactionList() {
         <Stat title="Total Retries" value={totalRetries} />
         <Stat
           title="Avg Retries / Failure"
-          value={failed.length ? (totalRetries / failed.length).toFixed(2) : "0.00"}
+          value={
+            failed.length
+              ? (totalRetries / failed.length).toFixed(2)
+              : "0.00"
+          }
         />
       </div>
 
@@ -168,32 +199,27 @@ export default function TransactionList() {
 
       {/* ================= TABLE ================= */}
       <Card title="Transactions" dark={darkMode}>
-        <div
-          style={{
-            overflowX: "auto",
-            WebkitOverflowScrolling: "touch",
-          }}
-        >
+        <div style={{ overflowX: "auto" }}>
           <table style={theme.table}>
             <thead>
               <tr>
-                <th style={th}>ID</th>
-                <th style={th}>Status</th>
-                <th style={th}>Failure Reason</th>
-                <th style={th}>Retries</th>
-                <th style={th}>Severity</th>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Failure Reason</th>
+                <th>Retries</th>
+                <th>Severity</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((t) => {
                 const sev = getSeverity(t.retryCount);
                 return (
-                  <tr key={t.id}>
-                    <td style={td}>{t.id}</td>
-                    <td style={td}>{t.status}</td>
-                    <td style={td}>{formatReason(t.failureReason)}</td>
-                    <td style={td}>{t.retryCount}</td>
-                    <td style={td}>
+                  <tr key={t._id}>
+                    <td>{t.transactionId}</td>
+                    <td>{t.status}</td>
+                    <td>{formatReason(t.failureReason)}</td>
+                    <td>{t.retryCount}</td>
+                    <td>
                       <span
                         style={{
                           padding: "6px 12px",
@@ -219,7 +245,6 @@ export default function TransactionList() {
 }
 
 /* ================= SMALL COMPONENTS ================= */
-
 const Stat = ({ title, value }) => (
   <div style={card}>
     <p style={{ opacity: 0.6 }}>{title}</p>
@@ -241,17 +266,20 @@ const Card = ({ title, children, dark }) => (
 );
 
 /* ================= LAYOUT ================= */
-
 const controls = {
   display: "grid",
-  gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: isMobile
+    ? "1fr"
+    : "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 12,
   marginBottom: 24,
 };
 
 const grid4 = {
   display: "grid",
-  gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: isMobile
+    ? "1fr"
+    : "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 16,
   marginBottom: 24,
 };
@@ -269,22 +297,7 @@ const card = {
   boxShadow: "0 8px 20px rgba(0,0,0,0.06)",
 };
 
-/* ================= TABLE ================= */
-
-const th = {
-  textAlign: "left",
-  padding: "12px 16px",
-  borderBottom: "1px solid #e5e7eb",
-  fontWeight: 600,
-};
-
-const td = {
-  padding: "12px 16px",
-  borderBottom: "1px solid #f1f5f9",
-};
-
 /* ================= THEMES ================= */
-
 const light = {
   page: {
     maxWidth: "1200px",
@@ -295,13 +308,11 @@ const light = {
   },
   input: {
     padding: 10,
-    width: "100%",
     borderRadius: 8,
     border: "1px solid #d1d5db",
   },
   button: {
-    padding: "10px",
-    width: "100%",
+    padding: 10,
     borderRadius: 8,
     border: "1px solid #d1d5db",
     background: "#ffffff",
